@@ -1,4 +1,4 @@
-const service = require('./tenants.service');
+const service = require('cpmsoft-core/tenants/tenants.service');
 
 module.exports = async function (fastify) {
 
