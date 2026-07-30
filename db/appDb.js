@@ -1,18 +1,23 @@
-const { Pool } = require("pg");
+const { Pool } = require('pg');
 
-const appDb = new Pool({
-  host: process.env.DB_HOST || "127.0.0.1",
-  port: Number(process.env.DB_PORT || 5432),
-  database: process.env.APP_DB_NAME || "appdb",
-  user: process.env.DB_USER,
+const pool = new Pool({
+  host: '127.0.0.1',
+  port: 5432,
+  database: 'appdb',
+  user: 'cpmsoft_user',
   password: process.env.DB_PASSWORD,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000
+  connectionTimeoutMillis: 2000
 });
 
-appDb.on("error", (error) => {
-  console.error("Unexpected appDb connection error:", error);
+pool.on('connect', () => {
+  console.log('✅ PostgreSQL appdb connected');
 });
 
-module.exports = appDb;
+pool.on('error', (err) => {
+  console.error('❌ PostgreSQL appdb error', err);
+  process.exit(1);
+});
+
+module.exports = pool;
