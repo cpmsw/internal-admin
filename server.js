@@ -496,5 +496,5 @@ fastify.listen({ port: 4100, host: "127.0.0.1" }, (err) => {
     console.error(err);
     process.exit(1);
   }
-  console.log("Internal Admin running on 4100");
+  console.log("CPMSOFT Platform Console running on 127.0.0.1:4100");
 });

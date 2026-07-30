@@ -1,4 +1,5 @@
 node_modules/
+ecosystem.config.sys
 .env
 logs/
 uploads/
