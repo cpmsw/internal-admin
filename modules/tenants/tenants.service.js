@@ -1,4 +1,4 @@
-const authDb = require('../../db/authDb');
+const authDb = require("cpmsoft-core/common/db/authDb");
 
 async function getTenants(searchValue = '') {
   const search = String(searchValue || '').trim().toLowerCase();
