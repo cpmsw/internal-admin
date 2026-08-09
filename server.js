@@ -70,6 +70,10 @@ fastify.register(swagger, {
         name: "Resources",
         description:
           "CPMSOFT resource catalog and tenant entitlements"
+      },
+      {
+        name: "Packages",
+        description: "CPMSOFT commercial package catalog"
       }
     ]
   }
