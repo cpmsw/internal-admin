@@ -1,6 +1,8 @@
 node_modules/
 ecosystem.config.sys
+ecosystem.config.js.backup
 .env
+*.env
 logs/
 uploads/
 backups/
