@@ -248,7 +248,77 @@ module.exports = async function (fastify) {
   });
 
   // UPDATE TENANT
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid'
+          }
+        }
+      },
+
+      body: {
+        type: 'object',
+        required: ['legalName'],
+        additionalProperties: false,
+
+        properties: {
+          legalName: {
+            type: 'string',
+            minLength: 1
+          },
+
+          dbaName: {
+            type: ['string', 'null']
+          },
+
+          companyCode: {
+            type: ['string', 'null']
+          },
+
+          phone: {
+            type: ['string', 'null']
+          },
+
+          email: {
+            type: ['string', 'null']
+          },
+
+          website: {
+            type: ['string', 'null']
+          },
+
+          addr1: {
+            type: ['string', 'null']
+          },
+
+          addr2: {
+            type: ['string', 'null']
+          },
+
+          city: {
+            type: ['string', 'null']
+          },
+
+          state: {
+            type: ['string', 'null']
+          },
+
+          postalCode: {
+            type: ['string', 'null']
+          },
+
+          country: {
+            type: ['string', 'null']
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
     try {
       return await service.updateTenant(
         request.params.id,
