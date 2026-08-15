@@ -46,6 +46,290 @@ module.exports = async function (fastify) {
     }
   );
 
+    // ---------------------------------
+  // GET ADMIN RESOURCE LIST
+  // ---------------------------------
+  fastify.get(
+    "/admin",
+    {
+      schema: {
+        tags: ["Resources"],
+        summary: "Get all resources for administration",
+        description:
+          "Returns active and inactive resources for Platform Console maintenance."
+      }
+    },
+    async (request, reply) => {
+      try {
+        return await service.getResourcesAdmin();
+
+      } catch (error) {
+        request.log.error(error);
+
+        return reply
+          .code(error.statusCode || 500)
+          .send({
+            code:
+              error.code ||
+              "RESOURCE_ADMIN_LOAD_FAILED",
+            error: error.message
+          });
+      }
+    }
+  );
+
+
+  // ---------------------------------
+  // GET RESOURCE BY ID
+  // ---------------------------------
+  fastify.get(
+    "/:id",
+    {
+      schema: {
+        tags: ["Resources"],
+        summary: "Get resource by ID",
+
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: {
+              type: "string",
+              format: "uuid"
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      try {
+        return await service.getResourceById(
+          request.params.id
+        );
+
+      } catch (error) {
+        request.log.error(error);
+
+        return reply
+          .code(error.statusCode || 500)
+          .send({
+            code:
+              error.code ||
+              "RESOURCE_LOAD_FAILED",
+            error: error.message
+          });
+      }
+    }
+  );
+
+
+  // ---------------------------------
+  // CREATE RESOURCE
+  // ---------------------------------
+  fastify.post(
+    "/",
+    {
+      schema: {
+        tags: ["Resources"],
+        summary: "Create resource",
+
+        body: {
+          type: "object",
+          required: [
+            "resource_key",
+            "resource_name"
+          ],
+          additionalProperties: false,
+
+          properties: {
+            resource_key: {
+              type: "string",
+              minLength: 1,
+              maxLength: 100
+            },
+
+            resource_name: {
+              type: "string",
+              minLength: 1,
+              maxLength: 150
+            },
+
+            category: {
+              type: ["string", "null"],
+              maxLength: 100
+            },
+
+            description: {
+              type: ["string", "null"]
+            },
+
+            is_active: {
+              type: "boolean"
+            },
+
+            display_order: {
+              type: "integer"
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      try {
+        const resource =
+          await service.createResource(
+            request.body
+          );
+
+        return reply
+          .code(201)
+          .send(resource);
+
+      } catch (error) {
+        request.log.error(error);
+
+        return reply
+          .code(error.statusCode || 500)
+          .send({
+            code:
+              error.code ||
+              "RESOURCE_CREATE_FAILED",
+            error: error.message
+          });
+      }
+    }
+  );
+
+
+  // ---------------------------------
+  // UPDATE RESOURCE
+  // ---------------------------------
+  fastify.put(
+    "/:id",
+    {
+      schema: {
+        tags: ["Resources"],
+        summary: "Update resource",
+
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: {
+              type: "string",
+              format: "uuid"
+            }
+          }
+        },
+
+        body: {
+          type: "object",
+          required: [
+            "resource_name"
+          ],
+          additionalProperties: false,
+
+          properties: {
+            resource_name: {
+              type: "string",
+              minLength: 1,
+              maxLength: 150
+            },
+
+            category: {
+              type: ["string", "null"],
+              maxLength: 100
+            },
+
+            description: {
+              type: ["string", "null"]
+            },
+
+            display_order: {
+              type: "integer"
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      try {
+        return await service.updateResource(
+          request.params.id,
+          request.body
+        );
+
+      } catch (error) {
+        request.log.error(error);
+
+        return reply
+          .code(error.statusCode || 500)
+          .send({
+            code:
+              error.code ||
+              "RESOURCE_UPDATE_FAILED",
+            error: error.message
+          });
+      }
+    }
+  );
+
+
+  // ---------------------------------
+  // ACTIVATE / DEACTIVATE RESOURCE
+  // ---------------------------------
+  fastify.patch(
+    "/:id/active",
+    {
+      schema: {
+        tags: ["Resources"],
+        summary: "Activate or deactivate resource",
+
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: {
+              type: "string",
+              format: "uuid"
+            }
+          }
+        },
+
+        body: {
+          type: "object",
+          required: ["is_active"],
+          additionalProperties: false,
+
+          properties: {
+            is_active: {
+              type: "boolean"
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      try {
+        return await service.setResourceActive(
+          request.params.id,
+          request.body.is_active
+        );
+
+      } catch (error) {
+        request.log.error(error);
+
+        return reply
+          .code(error.statusCode || 500)
+          .send({
+            code:
+              error.code ||
+              "RESOURCE_STATUS_UPDATE_FAILED",
+            error: error.message
+          });
+      }
+    }
+  );
 
   // ---------------------------------
   // GET TENANT RESOURCE SELECTION

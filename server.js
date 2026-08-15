@@ -16,6 +16,7 @@ fastify.register(cors, {
       "http://127.0.0.1:4100",
       "http://localhost:5173",
       "http://127.0.0.1:5173",
+      "http://192.168.1.67:5173",
       "https://console.cpmsoft.app"
     ];
 
