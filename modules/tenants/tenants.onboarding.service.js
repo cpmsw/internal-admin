@@ -105,14 +105,39 @@ async function onboardTenant(data) {
   }
 
 
+  const requestedPackageIds =
+    Array.isArray(data.packageIds)
+      ? [
+        ...new Set(
+          data.packageIds
+            .filter(Boolean)
+        )
+      ]
+      : [];
+
+
+  if (requestedPackageIds.length === 0) {
+    const error =
+      new Error(
+        "At least one package must be selected."
+      );
+
+    error.statusCode = 400;
+    error.code =
+      "PACKAGE_REQUIRED";
+
+    throw error;
+  }
+
+
   const requestedResourceIds =
     Array.isArray(data.resourceIds)
       ? [
-          ...new Set(
-            data.resourceIds
-              .filter(Boolean)
-          )
-        ]
+        ...new Set(
+          data.resourceIds
+            .filter(Boolean)
+        )
+      ]
       : [];
 
 
@@ -145,21 +170,82 @@ async function onboardTenant(data) {
     throw error;
   }
 
+  // ---------------------------------
+  // VERIFY SELECTED PACKAGES
+  // ---------------------------------
+  const validPackages =
+    await authDb.query(
+      `SELECT
+       id,
+       package_key
+     FROM packages
+     WHERE id =
+       ANY($1::uuid[])
+       AND is_active = true`,
+      [requestedPackageIds]
+    );
+
+
+  if (
+    validPackages.rowCount !==
+    requestedPackageIds.length
+  ) {
+    const error =
+      new Error(
+        "One or more selected packages are invalid or inactive."
+      );
+
+    error.statusCode = 400;
+    error.code =
+      "INVALID_PACKAGE_IDS";
+
+    throw error;
+  }
+
 
   // ---------------------------------
-  // ALWAYS INCLUDE BASELINE
-  // ADMINISTRATION RESOURCES
+  // ALWAYS INCLUDE ADMINISTRATION
+  // RESOURCES FOR EVERY TENANT
   // ---------------------------------
   const baselineResult =
     await authDb.query(
-      `SELECT id
-       FROM resources
-       WHERE resource_key IN
-         ('users', 'roles')
-         AND is_active = true`
+      `SELECT
+       id,
+       resource_key
+     FROM resources
+     WHERE category = 'administration'
+       AND is_active = true
+     ORDER BY display_order,
+              resource_name`
     );
 
-  if (baselineResult.rowCount !== 2) {
+
+  const requiredAdministrationKeys =
+    new Set([
+      "users",
+      "roles_permissions",
+      "company",
+      "status"
+    ]);
+
+
+  const configuredAdministrationKeys =
+    new Set(
+      baselineResult.rows.map(
+        row => row.resource_key
+      )
+    );
+
+
+  const missingAdministrationKeys =
+    [...requiredAdministrationKeys]
+      .filter(
+        key =>
+          !configuredAdministrationKeys.has(key)
+      );
+
+
+  if (missingAdministrationKeys.length > 0) {
     const error =
       new Error(
         "Required administration resources are not configured."
@@ -179,6 +265,57 @@ async function onboardTenant(data) {
     );
 
 
+  // ---------------------------------
+  // VERIFY SELECTED RESOURCES BELONG
+  // TO AT LEAST ONE SELECTED PACKAGE
+  // ---------------------------------
+  let validRequestedResources = [];
+
+
+  if (requestedResourceIds.length > 0) {
+
+    const packageResourceResult =
+      await authDb.query(
+        `SELECT DISTINCT
+         r.id,
+         r.resource_key
+       FROM package_resources pr
+       JOIN resources r
+         ON r.id = pr.resource_id
+       WHERE pr.package_id =
+             ANY($1::uuid[])
+         AND r.id =
+             ANY($2::uuid[])
+         AND r.is_active = true`,
+        [
+          requestedPackageIds,
+          requestedResourceIds
+        ]
+      );
+
+
+    if (
+      packageResourceResult.rowCount !==
+      requestedResourceIds.length
+    ) {
+      const error =
+        new Error(
+          "One or more selected resources do not belong to the selected packages or are inactive."
+        );
+
+      error.statusCode = 400;
+      error.code =
+        "INVALID_PACKAGE_RESOURCE_IDS";
+
+      throw error;
+    }
+
+
+    validRequestedResources =
+      packageResourceResult.rows;
+  }
+
+
   const finalResourceIds =
     [
       ...new Set([
@@ -186,46 +323,6 @@ async function onboardTenant(data) {
         ...requestedResourceIds
       ])
     ];
-
-
-  // ---------------------------------
-  // VERIFY ALL RESOURCE IDS
-  // ---------------------------------
-  const validResources =
-    await authDb.query(
-      `SELECT
-         id,
-         resource_key
-       FROM resources
-       WHERE id =
-         ANY($1::uuid[])
-         AND is_active = true`,
-      [finalResourceIds]
-    );
-
-
-  if (
-    validResources.rowCount !==
-    finalResourceIds.length
-  ) {
-    const error =
-      new Error(
-        "One or more selected resources are invalid or inactive."
-      );
-
-    error.statusCode = 400;
-    error.code =
-      "INVALID_RESOURCE_IDS";
-
-    throw error;
-  }
-
-
-  const resourceKeys =
-    validResources.rows.map(
-      row => row.resource_key
-    );
-
 
   // ---------------------------------
   // GENERATED IDS
@@ -250,6 +347,7 @@ async function onboardTenant(data) {
   let appCommitted = false;
 
   let permissionIds = [];
+  let rolePermissionCount = 0;
 
 
   try {
@@ -349,6 +447,35 @@ async function onboardTenant(data) {
       ]
     );
 
+    // ---------------------------------
+    // SAVE TENANT PACKAGE ASSIGNMENTS
+    // ---------------------------------
+    await authClient.query(
+      `INSERT INTO tenant_packages
+   (
+     tenant_id,
+     package_id,
+     is_active,
+     enabled_at,
+     disabled_at,
+     created_at,
+     updated_at
+   )
+   SELECT
+     $1,
+     package_id,
+     true,
+     now(),
+     NULL,
+     now(),
+     now()
+   FROM UNNEST($2::uuid[])
+        AS package_id`,
+      [
+        tenantId,
+        requestedPackageIds
+      ]
+    );
 
     // ---------------------------------
     // CREATE PENDING PRIMARY USER
@@ -408,7 +535,7 @@ async function onboardTenant(data) {
           primaryContact.department
         ),
         primaryContact.twofaRequired
-          ?? true
+        ?? true
       ]
     );
 
@@ -496,21 +623,17 @@ async function onboardTenant(data) {
       ]
     );
 
-
     // ---------------------------------
-    // GIVE PRIMARY ALL PERMISSIONS
-    // FOR ENABLED RESOURCES
-    // Includes normal + delete + special.
+    // GIVE PRIMARY ALL ACTIVE GENERIC
+    // PERMISSIONS FOR ENABLED RESOURCES
     // ---------------------------------
     const permissionResult =
       await appClient.query(
         `SELECT id
-         FROM permissions
-         WHERE is_active = true
-           AND module_key =
-               ANY($1::varchar[])
-         ORDER BY id`,
-        [resourceKeys]
+     FROM permissions
+     WHERE is_active = true
+     ORDER BY display_order,
+              permission_key`
       );
 
 
@@ -520,33 +643,47 @@ async function onboardTenant(data) {
       );
 
 
-    if (permissionIds.length > 0) {
 
-      await appClient.query(
-        `INSERT INTO role_permissions
-         (
-           tenant_id,
-           role_id,
-           permission_id,
-           created_by,
-           created_at
-         )
-         SELECT
-           $1,
-           $2,
-           permission_id,
-           NULL,
-           now()
-         FROM UNNEST($3::uuid[])
-              AS permission_id`,
-        [
-          tenantId,
-          primaryRoleId,
-          permissionIds
-        ]
-      );
+    if (
+      finalResourceIds.length > 0 &&
+      permissionIds.length > 0
+    ) {
+
+      const rolePermissionResult =
+        await appClient.query(
+          `INSERT INTO role_permissions
+       (
+         tenant_id,
+         role_id,
+         resource_id,
+         permission_id,
+         created_by,
+         created_at
+       )
+       SELECT
+         $1,
+         $2,
+         resource_id,
+         permission_id,
+         NULL,
+         now()
+       FROM UNNEST($3::uuid[])
+            AS r(resource_id)
+       CROSS JOIN UNNEST($4::uuid[])
+            AS p(permission_id)
+       RETURNING id`,
+          [
+            tenantId,
+            primaryRoleId,
+            finalResourceIds,
+            permissionIds
+          ]
+        );
+
+
+      rolePermissionCount =
+        rolePermissionResult.rowCount;
     }
-
 
     // ---------------------------------
     // ASSIGN PRIMARY ROLE TO USER
@@ -703,7 +840,7 @@ async function onboardTenant(data) {
       finalResourceIds.length,
 
     primaryPermissionCount:
-      permissionIds.length,
+      rolePermissionCount,
 
     invitationSent,
 

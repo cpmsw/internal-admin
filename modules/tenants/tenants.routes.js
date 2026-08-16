@@ -73,9 +73,9 @@ module.exports = async function (fastify) {
           required: [
             "tenant",
             "primaryContact",
+            "packageIds",
             "resourceIds"
           ],
-
           properties: {
 
             tenant: {
@@ -184,7 +184,16 @@ module.exports = async function (fastify) {
                 }
               }
             },
+            
+            packageIds: {
+              type: "array",
+              minItems: 1,
 
+              items: {
+                type: "string",
+                format: "uuid"
+              }
+            },
 
             resourceIds: {
               type: "array",
