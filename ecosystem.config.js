@@ -55,6 +55,9 @@ module.exports = {
         DB_PASSWORD:
           process.env.DB_PASSWORD,
 
+        PLATFORM_JWT_SECRET:
+          process.env.PLATFORM_JWT_SECRET,
+
         SMTP_HOST:
           process.env.SMTP_HOST,
 

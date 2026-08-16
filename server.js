@@ -4,7 +4,8 @@ const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
 const path = require("path");
 const AutoLoad = require("@fastify/autoload");
-
+const cookie = require("@fastify/cookie");
+const jwt = require("@fastify/jwt");
 
 // ---------------------------------
 // CORS
@@ -40,6 +41,86 @@ fastify.register(cors, {
   ]
 });
 
+fastify.register(cookie);
+
+fastify.register(jwt, {
+  secret: process.env.PLATFORM_JWT_SECRET,
+
+  cookie: {
+    cookieName: "cpmsoft_platform",
+    signed: false
+  },
+
+  sign: {
+    expiresIn: "8h"
+  }
+});
+
+
+// ---------------------------------
+// PLATFORM ADMIN AUTH GUARD
+// ---------------------------------
+fastify.addHook(
+  "onRequest",
+  async (request, reply) => {
+
+    const url =
+      request.raw.url || "";
+
+    // Authentication endpoints must remain public.
+    if (
+      url.startsWith(
+        "/api/platform/auth/"
+      )
+    ) {
+      return;
+    }
+
+    // Only protect Platform API routes.
+    if (
+      !url.startsWith(
+        "/api/platform/"
+      )
+    ) {
+      return;
+    }
+
+    try {
+
+      await request.jwtVerify();
+
+      if (
+        request.user?.stage !==
+        "authenticated" ||
+        request.user?.role !==
+        "platform_admin"
+      ) {
+
+        return reply
+          .code(401)
+          .send({
+            code:
+              "PLATFORM_AUTH_REQUIRED",
+
+            error:
+              "Platform administrator authentication is required."
+          });
+      }
+
+    } catch (error) {
+
+      return reply
+        .code(401)
+        .send({
+          code:
+            "PLATFORM_AUTH_REQUIRED",
+
+          error:
+            "Platform administrator authentication is required."
+        });
+    }
+  }
+);
 
 // ---------------------------------
 // SWAGGER / OPENAPI
@@ -77,7 +158,12 @@ fastify.register(swagger, {
       {
         name: "Packages",
         description: "CPMSOFT commercial package catalog"
-      }
+      },
+      {
+        name: "Authentication",
+        description:
+          "Platform administrator authentication"
+      },
     ]
   }
 });
