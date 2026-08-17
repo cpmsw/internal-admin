@@ -336,6 +336,14 @@ async function onboardTenant(data) {
   const primaryRoleId =
     crypto.randomUUID();
 
+  const adminRoleId =
+    crypto.randomUUID();
+
+  const managerRoleId =
+    crypto.randomUUID();
+
+  const viewerRoleId =
+    crypto.randomUUID();
 
   const authClient =
     await authDb.connect();
@@ -348,6 +356,54 @@ async function onboardTenant(data) {
 
   let permissionIds = [];
   let rolePermissionCount = 0;
+
+
+  async function grantRolePermissions(
+    roleId,
+    resourceIds,
+    actionPermissionIds
+  ) {
+
+    if (
+      resourceIds.length === 0 ||
+      actionPermissionIds.length === 0
+    ) {
+      return 0;
+    }
+
+    const result =
+      await appClient.query(
+        `INSERT INTO role_permissions
+       (
+         tenant_id,
+         role_id,
+         resource_id,
+         permission_id,
+         created_by,
+         created_at
+       )
+       SELECT
+         $1,
+         $2,
+         resource_id,
+         permission_id,
+         NULL,
+         now()
+       FROM UNNEST($3::uuid[])
+            AS r(resource_id)
+       CROSS JOIN UNNEST($4::uuid[])
+            AS p(permission_id)
+       RETURNING id`,
+        [
+          tenantId,
+          roleId,
+          resourceIds,
+          actionPermissionIds
+        ]
+      );
+
+    return result.rowCount;
+  }
 
 
   try {
@@ -592,33 +648,66 @@ async function onboardTenant(data) {
     // =================================
 
     // ---------------------------------
-    // CREATE PROTECTED PRIMARY ROLE
+    // CREATE DEFAULT TENANT ROLES
     // ---------------------------------
     await appClient.query(
       `INSERT INTO roles
-       (
-         id,
-         tenant_id,
-         role_code,
-         role_name,
-         description,
-         is_system,
-         is_active,
-         created_at
-       )
-       VALUES
-       (
-         $1,
-         $2,
-         'PRIMARY',
-         'Primary User',
-         'Protected full-access role for the tenant Primary Contact.',
-         true,
-         true,
-         now()
-       )`,
+   (
+     id,
+     tenant_id,
+     role_code,
+     role_name,
+     description,
+     is_system,
+     is_active,
+     created_at
+   )
+   VALUES
+   (
+     $1,
+     $5,
+     'PRIMARY',
+     'Primary User',
+     'Protected full-access role for the tenant Primary Contact.',
+     true,
+     true,
+     now()
+   ),
+   (
+     $2,
+     $5,
+     'ADMIN',
+     'Administrator',
+     'Full administrative access.',
+     false,
+     true,
+     now()
+   ),
+   (
+     $3,
+     $5,
+     'MANAGER',
+     'Manager',
+     'Standard management access.',
+     false,
+     true,
+     now()
+   ),
+   (
+     $4,
+     $5,
+     'VIEWER',
+     'Viewer',
+     'Read-only access.',
+     false,
+     true,
+     now()
+   )`,
       [
         primaryRoleId,
+        adminRoleId,
+        managerRoleId,
+        viewerRoleId,
         tenantId
       ]
     );
@@ -629,61 +718,76 @@ async function onboardTenant(data) {
     // ---------------------------------
     const permissionResult =
       await appClient.query(
-        `SELECT id
+        `SELECT
+       id,
+       permission_key
      FROM permissions
      WHERE is_active = true
-     ORDER BY display_order,
-              permission_key`
+     ORDER BY
+       display_order,
+       permission_key`
       );
-
 
     permissionIds =
       permissionResult.rows.map(
         row => row.id
       );
 
-
-
-    if (
-      finalResourceIds.length > 0 &&
-      permissionIds.length > 0
-    ) {
-
-      const rolePermissionResult =
-        await appClient.query(
-          `INSERT INTO role_permissions
-       (
-         tenant_id,
-         role_id,
-         resource_id,
-         permission_id,
-         created_by,
-         created_at
-       )
-       SELECT
-         $1,
-         $2,
-         resource_id,
-         permission_id,
-         NULL,
-         now()
-       FROM UNNEST($3::uuid[])
-            AS r(resource_id)
-       CROSS JOIN UNNEST($4::uuid[])
-            AS p(permission_id)
-       RETURNING id`,
-          [
-            tenantId,
-            primaryRoleId,
-            finalResourceIds,
-            permissionIds
+    const permissionIdByKey =
+      new Map(
+        permissionResult.rows.map(
+          row => [
+            row.permission_key,
+            row.id
           ]
-        );
+        )
+      );
+
+    const managerPermissionIds =
+      [
+        permissionIdByKey.get("view"),
+        permissionIdByKey.get("create"),
+        permissionIdByKey.get("edit")
+      ].filter(Boolean);
+
+    const viewerPermissionIds =
+      [
+        permissionIdByKey.get("view")
+      ].filter(Boolean);
 
 
-      rolePermissionCount =
-        rolePermissionResult.rowCount;
-    }
+    // ---------------------------------
+    // GRANT DEFAULT ROLE PERMISSIONS
+    // ---------------------------------
+
+    // PRIMARY - full access
+    rolePermissionCount =
+      await grantRolePermissions(
+        primaryRoleId,
+        finalResourceIds,
+        permissionIds
+      );
+
+    // ADMIN - full access
+    await grantRolePermissions(
+      adminRoleId,
+      finalResourceIds,
+      permissionIds
+    );
+
+    // MANAGER - view/create/edit
+    await grantRolePermissions(
+      managerRoleId,
+      finalResourceIds,
+      managerPermissionIds
+    );
+
+    // VIEWER - view only
+    await grantRolePermissions(
+      viewerRoleId,
+      finalResourceIds,
+      viewerPermissionIds
+    );
 
     // ---------------------------------
     // ASSIGN PRIMARY ROLE TO USER
