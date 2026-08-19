@@ -30,29 +30,108 @@ module.exports = async function (fastify) {
     }
   });
 
-  // PURGE COUNT
-  fastify.get('/purge/count', async (request, reply) => {
-    try {
-      return await service.getPurgeCount();
-    } catch (error) {
-      request.log.error(error);
-      return reply.code(error.statusCode || 500).send({
-        error: error.message
-      });
-    }
-  });
+  // -----------------------------
+  // TENANT PURGE PREVIEW
+  // -----------------------------
+  fastify.get(
+    "/:id/purge/count",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: {
+              type: "string",
+              format: "uuid"
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
 
-  // PURGE TENANTS
-  fastify.post('/purge', async (request, reply) => {
-    try {
-      return await service.purgeTenants();
-    } catch (error) {
-      request.log.error(error);
-      return reply.code(error.statusCode || 500).send({
-        error: error.message
-      });
+      try {
+
+        const result =
+          await service
+            .getTenantPurgeCount(
+              request.params.id
+            );
+
+        return result;
+
+      } catch (error) {
+
+        request.log.error(error);
+
+        return reply
+          .code(
+            error.statusCode || 500
+          )
+          .send({
+            code:
+              error.code ||
+              "TENANT_PURGE_PREVIEW_FAILED",
+
+            message:
+              error.message ||
+              "Unable to preview tenant purge."
+          });
+      }
     }
-  });
+  );
+
+  // -----------------------------
+  // PERMANENTLY PURGE ONE TENANT
+  // -----------------------------
+  fastify.post(
+    "/:id/purge",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: {
+              type: "string",
+              format: "uuid"
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+
+      try {
+
+        const result =
+          await service.purgeTenant(
+            request.params.id
+          );
+
+        return result;
+
+      } catch (error) {
+
+        request.log.error(error);
+
+        return reply
+          .code(
+            error.statusCode || 500
+          )
+          .send({
+            code:
+              error.code ||
+              "TENANT_PURGE_FAILED",
+
+            message:
+              error.message ||
+              "Unable to purge tenant."
+          });
+      }
+    }
+  );
 
   // ---------------------------------
   // ONBOARD NEW TENANT
@@ -184,7 +263,7 @@ module.exports = async function (fastify) {
                 }
               }
             },
-            
+
             packageIds: {
               type: "array",
               minItems: 1,
