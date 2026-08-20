@@ -679,7 +679,7 @@ async function onboardTenant(data) {
      'ADMIN',
      'Administrator',
      'Full administrative access.',
-     false,
+     true,
      true,
      now()
    ),
@@ -689,7 +689,7 @@ async function onboardTenant(data) {
      'MANAGER',
      'Manager',
      'Standard management access.',
-     false,
+     true,
      true,
      now()
    ),
@@ -699,7 +699,7 @@ async function onboardTenant(data) {
      'VIEWER',
      'Viewer',
      'Read-only access.',
-     false,
+     true,
      true,
      now()
    )`,
